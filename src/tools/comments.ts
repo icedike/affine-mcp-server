@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { GraphQLClient } from "../graphqlClient.js";
 import { text } from "../util/mcp.js";
+import { buildCommentContent } from "../util/comment-snapshot.js";
 
 export function registerCommentTools(server: McpServer, gql: GraphQLClient, defaults: { workspaceId?: string }) {
   const listCommentsHandler = async (parsed: { workspaceId?: string; docId: string; first?: number; offset?: number; after?: string }) => {
@@ -32,7 +33,9 @@ export function registerCommentTools(server: McpServer, gql: GraphQLClient, defa
     if (!workspaceId) throw new Error("workspaceId required (or set AFFINE_WORKSPACE_ID)");
     const mutation = `mutation CreateComment($input: CommentCreateInput!){ createComment(input:$input){ id content createdAt updatedAt resolved } }`;
     const normalizedDocMode = (parsed.docMode || 'page').toLowerCase() === 'edgeless' ? 'edgeless' : 'page';
-    const normalizedContent = typeof parsed.content === 'string' ? { text: parsed.content } : parsed.content;
+    const normalizedContent = typeof parsed.content === 'string'
+      ? buildCommentContent(parsed.content, normalizedDocMode)
+      : parsed.content;
     const input = { content: normalizedContent, docId: parsed.docId, workspaceId, docTitle: parsed.docTitle || "", docMode: normalizedDocMode, mentions: parsed.mentions };
     const data = await gql.request<{ createComment: any }>(mutation, { input });
     return text(data.createComment);
@@ -56,7 +59,10 @@ export function registerCommentTools(server: McpServer, gql: GraphQLClient, defa
 
   const updateCommentHandler = async (parsed: { id: string; content: any }) => {
     const mutation = `mutation UpdateComment($input: CommentUpdateInput!){ updateComment(input:$input) }`;
-    const data = await gql.request<{ updateComment: boolean }>(mutation, { input: { id: parsed.id, content: parsed.content } });
+    const normalizedContent = typeof parsed.content === 'string'
+      ? buildCommentContent(parsed.content)
+      : parsed.content;
+    const data = await gql.request<{ updateComment: boolean }>(mutation, { input: { id: parsed.id, content: normalizedContent } });
     return text({ success: data.updateComment });
   };
   server.registerTool(
